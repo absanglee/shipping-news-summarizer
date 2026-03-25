@@ -80,7 +80,10 @@ def build_prompt(titles: list[str]) -> str:
     numbered = "\n".join(f"{i+1}. {t.strip()}" for i, t in enumerate(titles))
     return f"""Analyze these shipping news headlines. For each:
 - Decide if it concerns container ships or boxships (orders, deliveries, charters, TEU, scrapping, MSC/Maersk/COSCO/Evergreen/CMA CGM/ONE/HMM/Yang Ming).
-- If YES: write a 5-6 line Korean summary with key facts (numbers, company names, vessel names).
+- If YES: write a 5-6 line Korean summary including:
+  1. 핵심 사실 (수치, 회사명, 선박명)
+  2. 시장/업계에 미치는 영향 분석
+  3. 향후 전망 또는 배경 맥락
 - If NO: just flag it irrelevant.
 
 Return JSON array only:
@@ -97,11 +100,24 @@ def analyze(client: anthropic.Anthropic, titles: list[str]) -> list[dict]:
     prompt = build_prompt(titles)
 
     response = client.messages.create(
-        model="claude-opus-4-5",          # 최신 고성능 모델
-        max_tokens=2048,                   # 응답 토큰 상한 제한
-        system=SYSTEM,
-        messages=[{"role": "user", "content": prompt}],
-    )
+    model="claude-opus-4-5",
+    max_tokens=8000,
+    thinking={
+        "type": "enabled",
+        "budget_tokens": 5000  # 추론에 쓸 최대 토큰 (높을수록 깊은 분석)
+    },
+    system=SYSTEM,
+    messages=[{"role": "user", "content": build_prompt(titles)}],
+)
+
+# thinking 블록 제외하고 텍스트만 추출
+raw = next(
+    block.text for block in response.content
+    if block.type == "text"
+)
+```
+
+---
 
     raw = response.content[0].text.strip()
     raw = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.IGNORECASE)
