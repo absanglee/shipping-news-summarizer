@@ -98,24 +98,22 @@ Headlines:
 # ────────────────────────────────────────────────────────────
 def analyze(client: anthropic.Anthropic, titles: list[str]) -> list[dict]:
     prompt = build_prompt(titles)
-
-    response = client.messages.create(
-    model="claude-opus-4-5",
-    max_tokens=8000,
-    thinking={
-        "type": "enabled",
-        "budget_tokens": 5000  # 추론에 쓸 최대 토큰 (높을수록 깊은 분석)
-    },
-    system=SYSTEM,
-    messages=[{"role": "user", "content": build_prompt(titles)}],
-)
-
-# thinking 블록 제외하고 텍스트만 추출
-raw = next(
-    block.text for block in response.content
-    if block.type == "text"
-)
-    raw = response.content[0].text.strip()
+    with st.spinner("🤖 Claude가 기사를 분석 중입니다..."):
+        try:
+            response = client.messages.create(
+                model="claude-opus-4-5",
+                max_tokens=8000,
+                thinking={
+                    "type": "enabled",
+                    "budget_tokens": 5000
+                },
+                system=SYSTEM,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            raw = next(
+                block.text for block in response.content
+                if block.type == "text"
+            )
     raw = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.IGNORECASE)
     raw = re.sub(r"\s*```$", "", raw).strip()
 
