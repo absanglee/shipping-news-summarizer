@@ -16,9 +16,12 @@ import anthropic
 # ────────────────────────────────────────────────────────────
 def get_api_key() -> str:
     try:
-        return st.secrets["ANTHROPIC_API_KEY"]
+        key = st.secrets.get("ANTHROPIC_API_KEY", "")
+        if key:
+            return key
     except Exception:
-        return os.environ.get("ANTHROPIC_API_KEY", "")
+        pass
+    return os.environ.get("ANTHROPIC_API_KEY", "")
 # ────────────────────────────────────────────────────────────
 # 페이지 설정
 # ────────────────────────────────────────────────────────────
