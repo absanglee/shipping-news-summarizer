@@ -115,10 +115,6 @@ raw = next(
     block.text for block in response.content
     if block.type == "text"
 )
-```
-
----
-
     raw = response.content[0].text.strip()
     raw = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.IGNORECASE)
     raw = re.sub(r"\s*```$", "", raw).strip()
