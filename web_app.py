@@ -99,29 +99,30 @@ Headlines:
 def analyze(client: anthropic.Anthropic, titles: list[str]) -> list[dict]:
     prompt = build_prompt(titles)
     with st.spinner("🤖 Claude가 기사를 분석 중입니다..."):
-        try:
-            response = client.messages.create(
-                model="claude-opus-4-5",
-                max_tokens=8000,
-                thinking={
-                    "type": "enabled",
-                    "budget_tokens": 5000
-                },
-                system=SYSTEM,
-                messages=[{"role": "user", "content": prompt}],
-            )
-            raw = next(
-                block.text for block in response.content
-                if block.type == "text"
-            )
+        response = client.messages.create(
+            model="claude-opus-4-5",
+            max_tokens=8000,
+            thinking={
+                "type": "enabled",
+                "budget_tokens": 5000
+            },
+            system=SYSTEM,
+            messages=[{"role": "user", "content": prompt}],
+        )
+
+    raw = next(
+        block.text for block in response.content
+        if block.type == "text"
+    )
     raw = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.IGNORECASE)
     raw = re.sub(r"\s*```$", "", raw).strip()
 
     try:
-        return json.loads(raw) if isinstance(json.loads(raw), list) else []
+        result = json.loads(raw)
+        return result if isinstance(result, list) else []
     except json.JSONDecodeError:
-        st.warning("⚠️ 응답 파싱 오류. 원본 응답:")
-        st.code(raw, language="text")
+        st.warning("⚠️ JSON 파싱 오류. AI 원본 응답:")
+        st.code(raw[:3000], language="text")
         return []
 # ────────────────────────────────────────────────────────────
 # 보고서 생성
