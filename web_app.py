@@ -79,7 +79,7 @@ SYSTEM = (
 def build_prompt(titles: list[str]) -> str:
     numbered = "\n".join(f"{i+1}. {t.strip()}" for i, t in enumerate(titles))
     return f"""Analyze these shipping news headlines. For each:
-- Decide if it concerns container ships or boxships (orders, deliveries, charters, TEU, scrapping, MSC/Maersk/COSCO/Evergreen/CMA CGM/ONE/HMM/Yang Ming).
+- Decide if it concerns container ships or boxships (orders, deliveries, charters, TEU, scrapping, MSC/Maersk/COSCO/Evergreen/CMA CGM/ONE/HMM/Yang Ming, energy, new shipbuilding, feeder).
 - If YES: write a 5-6 line Korean summary including:
   1. 핵심 사실 (수치, 회사명, 선박명)
   2. 시장/업계에 미치는 영향 분석
