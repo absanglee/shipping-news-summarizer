@@ -539,10 +539,17 @@ with tab_clip:
         except Exception:
             pass
 
-    if st.session_state.get("clip_b64"):
-        _, col_btn, _ = st.columns([1, 1, 1])
-        with col_btn:
-            if st.button("🔍 이미지 분석 시작", use_container_width=True, type="primary", key="btn_clip"):
+# 이미지가 세션에 없어도 버튼 항상 표시
+    _, col_btn, _ = st.columns([1, 1, 1])
+    with col_btn:
+        btn_disabled = not bool(st.session_state.get("clip_b64"))
+        if st.button(
+            "🔍 이미지 분석 시작" if not btn_disabled else "📋 이미지를 먼저 붙여넣기 하세요",
+            use_container_width=True,
+            type="primary",
+            key="btn_clip",
+            disabled=btn_disabled,
+        ):
                 with st.spinner("📸 이미지에서 기사 제목 추출 중..."):
                     try:
                         titles = extract_titles_from_image(
