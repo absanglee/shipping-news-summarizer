@@ -41,7 +41,7 @@ st.markdown("""
         background:#f8faff; border-left:5px solid #1a73e8;
         border-radius:8px; padding:1.4rem 1.6rem; margin-bottom:1.4rem;
     }
-    .section-title {
+    .section-label {
         font-size:0.78rem; font-weight:700; color:#1a73e8;
         text-transform:uppercase; letter-spacing:1px;
         margin-top:1rem; margin-bottom:0.3rem;
@@ -70,14 +70,10 @@ st.markdown("""
         background:#fafafa; border-left:4px solid #ddd;
         border-radius:8px; padding:0.8rem 1.2rem; margin-bottom:0.6rem; color:#999;
     }
-    .badge {
-        display:inline-block; background:#e8f0fe; color:#1a73e8;
-        border-radius:12px; padding:2px 10px; font-size:0.78rem;
-        margin-right:4px; margin-bottom:4px;
-    }
-    .badge-geo  { background:#fff8e1; color:#f57f17; }
-    .badge-vol  { background:#e8f5e9; color:#2e7d32; }
-    .badge-risk { background:#fce4ec; color:#c62828; }
+    .badge        { display:inline-block; background:#e8f0fe; color:#1a73e8; border-radius:12px; padding:2px 10px; font-size:0.78rem; margin-right:4px; margin-bottom:4px; }
+    .badge-geo    { display:inline-block; background:#fff8e1; color:#f57f17; border-radius:12px; padding:2px 10px; font-size:0.78rem; margin-right:4px; margin-bottom:4px; }
+    .badge-vol    { display:inline-block; background:#e8f5e9; color:#2e7d32; border-radius:12px; padding:2px 10px; font-size:0.78rem; margin-right:4px; margin-bottom:4px; }
+    .badge-risk   { display:inline-block; background:#fce4ec; color:#c62828; border-radius:12px; padding:2px 10px; font-size:0.78rem; margin-right:4px; margin-bottom:4px; }
     .extracted-box {
         background:#f0f4ff; border-radius:6px; padding:0.8rem 1rem;
         font-size:0.88rem; color:#333; line-height:1.7;
@@ -103,32 +99,34 @@ def get_client(api_key: str):
     return anthropic.Anthropic(api_key=api_key)
 
 # ────────────────────────────────────────────────────────────
-# 클립보드 HTML 컴포넌트
+# 클립보드 HTML - 이미지를 hidden input으로 Streamlit에 전달
 # ────────────────────────────────────────────────────────────
 CLIPBOARD_HTML = """
 <style>
     * { box-sizing:border-box; margin:0; padding:0; }
     body { font-family:'Segoe UI',Arial,sans-serif; background:transparent; }
     #paste-zone {
-        width:100%; min-height:150px; border:2.5px dashed #1a73e8;
+        width:100%; min-height:140px; border:2.5px dashed #1a73e8;
         border-radius:12px; display:flex; flex-direction:column;
         align-items:center; justify-content:center; cursor:pointer;
         background:#f8faff; transition:all 0.2s; padding:20px; outline:none;
     }
-    #paste-zone:hover, #paste-zone.active { background:#e8f0fe; border-color:#0d5bce; }
-    #paste-zone .icon { font-size:2.2rem; margin-bottom:6px; }
+    #paste-zone:hover { background:#e8f0fe; border-color:#0d5bce; }
+    #paste-zone .icon  { font-size:2rem; margin-bottom:6px; }
     #paste-zone .label { font-size:0.95rem; font-weight:600; color:#1a73e8; margin-bottom:4px; }
     #paste-zone .hint  { font-size:0.8rem; color:#888; }
-    #preview-wrap { margin-top:10px; display:none; }
-    #preview-wrap img { max-width:100%; border-radius:8px; border:1px solid #ddd; }
+    #preview-wrap { margin-top:10px; display:none; text-align:center; }
+    #preview-wrap img { max-width:100%; max-height:200px; border-radius:8px; border:1px solid #ddd; }
+    #success-msg { margin-top:8px; font-size:0.85rem; font-weight:600; color:#2e7d32; display:none; }
     #clear-btn {
         margin-top:8px; padding:5px 16px; background:#fff;
         border:1px solid #ccc; border-radius:6px; cursor:pointer;
         font-size:0.8rem; color:#555; display:none;
     }
     #clear-btn:hover { background:#f5f5f5; }
-    #status { margin-top:8px; font-size:0.85rem; font-weight:600; color:#2e7d32; display:none; }
+    #ready-input { display:none; }
 </style>
+
 <div id="paste-zone" tabindex="0">
     <div class="icon">📋</div>
     <div class="label">여기를 클릭 후 Ctrl+V 로 이미지 붙여넣기</div>
@@ -137,50 +135,71 @@ CLIPBOARD_HTML = """
 <div id="preview-wrap">
     <img id="preview-img" src="" alt="붙여넣은 이미지">
 </div>
-<div id="status">✅ 이미지 준비 완료!</div>
+<div id="success-msg">✅ 이미지 준비 완료! 아래 분석 시작 버튼을 누르세요.</div>
 <button id="clear-btn" onclick="clearImage()">🗑 이미지 지우기</button>
+<input type="text" id="ready-input" value="">
+
 <script>
-    const pasteZone = document.getElementById('paste-zone');
+    const pasteZone   = document.getElementById('paste-zone');
     const previewWrap = document.getElementById('preview-wrap');
-    const previewImg = document.getElementById('preview-img');
-    const clearBtn = document.getElementById('clear-btn');
-    const status = document.getElementById('status');
+    const previewImg  = document.getElementById('preview-img');
+    const successMsg  = document.getElementById('success-msg');
+    const clearBtn    = document.getElementById('clear-btn');
+    const readyInput  = document.getElementById('ready-input');
 
     pasteZone.addEventListener('click', () => pasteZone.focus());
-    pasteZone.addEventListener('dragover', (e) => { e.preventDefault(); pasteZone.classList.add('active'); });
-    pasteZone.addEventListener('dragleave', () => pasteZone.classList.remove('active'));
+
+    pasteZone.addEventListener('dragover', (e) => { e.preventDefault(); pasteZone.style.background='#e8f0fe'; });
+    pasteZone.addEventListener('dragleave', () => { pasteZone.style.background='#f8faff'; });
     pasteZone.addEventListener('drop', (e) => {
-        e.preventDefault(); pasteZone.classList.remove('active');
+        e.preventDefault();
+        pasteZone.style.background = '#f8faff';
         const file = e.dataTransfer.files[0];
         if (file && file.type.startsWith('image/')) handleImageFile(file);
     });
+
     document.addEventListener('paste', (e) => {
         for (let item of e.clipboardData.items) {
-            if (item.type.startsWith('image/')) { handleImageFile(item.getAsFile()); break; }
+            if (item.type.startsWith('image/')) {
+                handleImageFile(item.getAsFile());
+                break;
+            }
         }
     });
+
     function handleImageFile(file) {
         const reader = new FileReader();
         reader.onload = (ev) => {
             const dataUrl = ev.target.result;
+            const base64  = dataUrl.split(',')[1];
+            const mime    = dataUrl.split(';')[0].split(':')[1];
+
             previewImg.src = dataUrl;
             previewWrap.style.display = 'block';
-            clearBtn.style.display = 'inline-block';
-            status.style.display = 'block';
-            pasteZone.style.display = 'none';
-            const base64 = dataUrl.split(',')[1];
-            const mime   = dataUrl.split(';')[0].split(':')[1];
-            window.parent.postMessage({ type:'streamlit:setComponentValue', value: JSON.stringify({base64, mime}) }, '*');
+            successMsg.style.display  = 'block';
+            clearBtn.style.display    = 'inline-block';
+            pasteZone.style.display   = 'none';
+
+            // Streamlit으로 값 전달
+            window.parent.postMessage({
+                type: 'streamlit:setComponentValue',
+                value: JSON.stringify({ base64: base64, mime: mime, ready: true })
+            }, '*');
         };
         reader.readAsDataURL(file);
     }
+
     function clearImage() {
         previewImg.src = '';
         previewWrap.style.display = 'none';
-        clearBtn.style.display = 'none';
-        status.style.display = 'none';
-        pasteZone.style.display = 'flex';
-        window.parent.postMessage({ type:'streamlit:setComponentValue', value: JSON.stringify({base64:'', mime:''}) }, '*');
+        successMsg.style.display  = 'none';
+        clearBtn.style.display    = 'none';
+        pasteZone.style.display   = 'flex';
+
+        window.parent.postMessage({
+            type: 'streamlit:setComponentValue',
+            value: JSON.stringify({ base64: '', mime: '', ready: false })
+        }, '*');
     }
 </script>
 """
@@ -208,7 +227,7 @@ def extract_titles_from_image(client, image_b64: str, media_type: str) -> list[s
     return [t.strip() for t in raw.splitlines() if t.strip()]
 
 # ────────────────────────────────────────────────────────────
-# 시스템 프롬프트 - 전문 애널리스트 페르소나
+# 시스템 프롬프트
 # ────────────────────────────────────────────────────────────
 SYSTEM = """You are a senior maritime industry analyst with 20+ years of experience, specializing in:
 - Container shipping markets and boxship sector
@@ -217,73 +236,45 @@ SYSTEM = """You are a senior maritime industry analyst with 20+ years of experie
 - Freight rate cycles, charter markets, and fleet dynamics
 - Macroeconomic indicators affecting container demand
 
-You have deep knowledge of:
-- Major alliances (2M, Ocean Alliance, THE Alliance)
-- Key trade lanes (Asia-Europe, Transpacific, Transatlantic)
-- Port congestion, canal disruptions (Suez, Panama)
-- Supply chain restructuring (nearshoring, China+1 strategy)
-- IMO regulations and decarbonization trends
+You have deep knowledge of major alliances, key trade lanes, port congestion, canal disruptions,
+supply chain restructuring, IMO regulations and decarbonization trends.
 
-Respond ONLY with a valid JSON array. No extra text."""
+Respond ONLY with a valid JSON array. No extra text, no markdown."""
 
 # ────────────────────────────────────────────────────────────
 # 심층 분석 프롬프트
 # ────────────────────────────────────────────────────────────
 def build_prompt(titles: list[str]) -> str:
     numbered = "\n".join(f"{i+1}. {t.strip()}" for i, t in enumerate(titles))
-    return f"""You are analyzing shipping news headlines. Think deeply before responding.
+    return f"""Analyze these shipping news headlines carefully.
 
-For each headline:
-
-STEP 1 - RELEVANCE CHECK:
-Determine if it directly concerns container ships or boxships:
+For each headline, determine if it concerns container ships or boxships:
 - Containership orders, deliveries, scrapping, charters
-- TEU capacity, slot utilization
-- Container freight rates (SCFI, WCI, FBX indices)
+- TEU capacity, slot utilization, container freight rates
 - Major operators: MSC, Maersk, COSCO, Evergreen, CMA CGM, ONE, HMM, Yang Ming, Zim, PIL
-- Container terminal operations and port infrastructure
-- Liner alliances and service network changes
+- Container terminal operations, liner alliances, service network changes
 
-STEP 2 - IF RELEVANT, conduct DEEP ANALYSIS covering ALL of:
+IF RELEVANT, provide deep analysis in Korean covering:
+1. Core facts (who, what, when, where, how much)
+2. Geopolitical and macroeconomic context (US-China tensions, Red Sea disruptions, Panama Canal, nearshoring trends)
+3. Trade volume and demand analysis (specific trade lanes, port throughput, seasonal patterns)
+4. Market impact (freight rates, charter markets, fleet supply-demand)
+5. Forward outlook (short-term 3-6 months, medium-term 1-2 years, key risks)
 
-A) CORE FACTS (핵심 사실)
-   - Who, What, When, Where, How much/many
-   - Specific vessel names, TEU sizes, contract values, routes
-
-B) GEOPOLITICAL & MACRO CONTEXT (지정학·거시경제 맥락)
-   - Connection to US-China trade tensions, tariffs, sanctions
-   - Red Sea/Houthi disruptions, Panama Canal drought impacts
-   - Russia-Ukraine war effects on trade routes
-   - Nearshoring/friendshoring trends
-   - Regional trade bloc changes (RCEP, CPTPP effects)
-
-C) TRADE VOLUME & DEMAND ANALYSIS (물동량·수요 분석)
-   - Impact on specific trade lane volumes (Asia-Europe, Transpacific, etc.)
-   - Container demand outlook (retail inventory cycles, manufacturing PMI)
-   - Port throughput implications
-   - Seasonal demand patterns
-
-D) MARKET IMPACT (시장 영향)
-   - Freight rate implications (spot vs. contract)
-   - Fleet supply-demand balance effect
-   - Competitor reactions likely
-   - Charter rate market implications
-
-E) FORWARD OUTLOOK (향후 전망)
-   - Short-term (3-6 months) implications
-   - Medium-term (1-2 years) strategic significance
-   - Key risks and uncertainties to watch
-
-Return ONLY this JSON array (no markdown):
+Return ONLY this exact JSON array structure with no markdown code blocks:
 [
   {{
     "n": 1,
     "relevant": true,
-    "topics": ["containership order", "newbuild", "TEU"],
-    "geo_tags": ["US-China trade", "Asia-Europe lane"],
-    "volume_tags": ["demand increase", "transpacific"],
+    "topics": ["containership order", "newbuild"],
+    "geo_tags": ["US-China trade"],
+    "volume_tags": ["transpacific demand"],
     "risk_tags": ["overcapacity risk"],
-    "korean_summary": "【핵심 사실】\\n3~4줄 핵심 사실 요약\\n\\n【지정학·거시경제 맥락】\\n2~3줄 세계 정세 및 경제 맥락 분석\\n\\n【물동량·수요 분석】\\n2~3줄 물동량 및 수요 영향 분석\\n\\n【시장 영향】\\n2~3줄 운임·선복 시장 영향\\n\\n【향후 전망】\\n2~3줄 단기·중기 전망 및 리스크"
+    "facts": "핵심 사실을 3~4줄로 작성. 구체적인 수치, 회사명, 선박명 포함.",
+    "geo": "지정학·거시경제 맥락을 2~3줄로 작성. 세계 정세와의 연결고리 분석.",
+    "volume": "물동량·수요 영향을 2~3줄로 작성. 특정 항로와 물동량 변화 분석.",
+    "market": "시장 영향을 2~3줄로 작성. 운임, 용선료, 선복 수급 영향.",
+    "outlook": "향후 전망을 2~3줄로 작성. 단기·중기 전망 및 주요 리스크."
   }},
   {{
     "n": 2,
@@ -292,32 +283,31 @@ Return ONLY this JSON array (no markdown):
     "geo_tags": [],
     "volume_tags": [],
     "risk_tags": [],
-    "korean_summary": ""
+    "facts": "",
+    "geo": "",
+    "volume": "",
+    "market": "",
+    "outlook": ""
   }}
 ]
 
-HEADLINES TO ANALYZE:
+HEADLINES:
 {numbered}"""
 
 # ────────────────────────────────────────────────────────────
-# Claude 심층 분석 (Extended Thinking 최대화)
+# Claude 심층 분석
 # ────────────────────────────────────────────────────────────
 def analyze(client, titles: list[str], thinking_budget: int) -> list[dict]:
     response = client.messages.create(
         model="claude-opus-4-5",
-        max_tokens=10000,
-        thinking={
-            "type": "enabled",
-            "budget_tokens": thinking_budget,
-        },
+        max_tokens=16000,
+        thinking={"type": "enabled", "budget_tokens": thinking_budget},
         system=SYSTEM,
         messages=[{"role": "user", "content": build_prompt(titles)}],
     )
-
     raw = next(block.text for block in response.content if block.type == "text")
     raw = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.IGNORECASE)
     raw = re.sub(r"\s*```$", "", raw).strip()
-
     try:
         result = json.loads(raw)
         return result if isinstance(result, list) else []
@@ -343,13 +333,17 @@ def make_report(results: list[dict], titles: list[str]) -> str:
         title = titles[n - 1] if isinstance(n, int) and 0 < n <= len(titles) else "N/A"
         lines += [
             f"【기사 #{n}】 {title}",
-            f"토픽    : {', '.join(r.get('topics', []))}",
-            f"지정학  : {', '.join(r.get('geo_tags', []))}",
-            f"물동량  : {', '.join(r.get('volume_tags', []))}",
-            f"리스크  : {', '.join(r.get('risk_tags', []))}",
+            f"토픽   : {', '.join(r.get('topics', []))}",
+            f"지정학 : {', '.join(r.get('geo_tags', []))}",
+            f"물동량 : {', '.join(r.get('volume_tags', []))}",
+            f"리스크 : {', '.join(r.get('risk_tags', []))}",
             "",
-            r.get("korean_summary", "").replace("\\n", "\n"),
-            "", "-" * 65, "",
+            "[ 핵심 사실 ]",    r.get("facts", ""),   "",
+            "[ 지정학·거시경제 ]", r.get("geo", ""),   "",
+            "[ 물동량·수요 ]",   r.get("volume", ""), "",
+            "[ 시장 영향 ]",    r.get("market", ""), "",
+            "[ 향후 전망 ]",    r.get("outlook", ""),"",
+            "-" * 65, "",
         ]
     return "\n".join(lines)
 
@@ -362,78 +356,55 @@ def show_results(results: list[dict], titles: list[str], thinking_budget: int):
 
     st.divider()
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("📋 입력", f"{len(titles)}건")
-    c2.metric("✅ 관련", f"{len(relevant)}건")
-    c3.metric("❌ 비관련", f"{len(not_relevant)}건")
+    c1.metric("📋 입력",    f"{len(titles)}건")
+    c2.metric("✅ 관련",    f"{len(relevant)}건")
+    c3.metric("❌ 비관련",  f"{len(not_relevant)}건")
     c4.metric("🕐 분석 시각", datetime.now().strftime("%H:%M:%S"))
     st.divider()
-
-    if relevant:
+    if not relevant:
+        st.warning("⚠️ 컨테이너선 또는 박스선 관련 기사가 없습니다.")
+    else:
         st.markdown(f"### ✅ 컨테이너선 · 박스선 관련 기사 — {len(relevant)}건")
         st.markdown(f'<div class="thinking-badge">🧠 Extended Thinking {thinking_budget:,} tokens 적용</div>', unsafe_allow_html=True)
 
         for r in relevant:
-            n = r.get("n", "?")
+            n     = r.get("n", "?")
             title = titles[n - 1] if isinstance(n, int) and 0 < n <= len(titles) else "N/A"
 
-            # 배지 생성
-            topic_badges  = "".join(f'<span class="badge">{t}</span>' for t in r.get("topics", []))
-            geo_badges    = "".join(f'<span class="badge badge-geo">{t}</span>' for t in r.get("geo_tags", []))
-            volume_badges = "".join(f'<span class="badge badge-vol">{t}</span>' for t in r.get("volume_tags", []))
-            risk_badges   = "".join(f'<span class="badge badge-risk">{t}</span>' for t in r.get("risk_tags", []))
+            topic_html  = "".join(f'<span class="badge">{t}</span>'      for t in r.get("topics", []))
+            geo_html    = "".join(f'<span class="badge-geo">{t}</span>'   for t in r.get("geo_tags", []))
+            volume_html = "".join(f'<span class="badge-vol">{t}</span>'   for t in r.get("volume_tags", []))
+            risk_html   = "".join(f'<span class="badge-risk">{t}</span>'  for t in r.get("risk_tags", []))
 
-            # 요약 섹션 파싱
-            summary_raw = r.get("korean_summary", "").replace("\\n", "\n")
-            sections = {
-                "핵심 사실": "",
-                "지정학·거시경제 맥락": "",
-                "물동량·수요 분석": "",
-                "시장 영향": "",
-                "향후 전망": "",
-            }
-            current_key = None
-            for line in summary_raw.splitlines():
-                matched = False
-                for key in sections:
-                    if f"【{key}】" in line:
-                        current_key = key
-                        matched = True
-                        break
-                if not matched and current_key:
-                    sections[current_key] += line + "<br>"
-
-            # 섹션별 HTML
-            def section_html(content, box_class):
-                content = content.strip("<br>").strip()
-                return f'<div class="{box_class}">{content}</div>' if content else ""
+            facts   = r.get("facts",   "").replace("\n", "<br>")
+            geo     = r.get("geo",     "").replace("\n", "<br>")
+            volume  = r.get("volume",  "").replace("\n", "<br>")
+            market  = r.get("market",  "").replace("\n", "<br>")
+            outlook = r.get("outlook", "").replace("\n", "<br>")
 
             st.markdown(f"""
 <div class="relevant-card">
     <div style="font-size:1.05rem;font-weight:700;color:#1a73e8;margin-bottom:0.5rem;">
         📰 #{n} &nbsp;<span style="font-weight:400;color:#333;">{title}</span>
     </div>
-    <div style="margin-bottom:0.5rem;">
-        {topic_badges}{geo_badges}{volume_badges}{risk_badges}
-    </div>
+    <div style="margin-bottom:0.8rem;">{topic_html}{geo_html}{volume_html}{risk_html}</div>
 
-    <div class="section-title">📌 핵심 사실</div>
-    {section_html(sections["핵심 사실"], "summary-box")}
+    <div class="section-label">📌 핵심 사실</div>
+    <div class="summary-box">{facts}</div>
 
-    <div class="section-title">🌍 지정학·거시경제 맥락</div>
-    {section_html(sections["지정학·거시경제 맥락"], "geo-box")}
+    <div class="section-label">🌍 지정학·거시경제 맥락</div>
+    <div class="geo-box">{geo}</div>
 
-    <div class="section-title">📦 물동량·수요 분석</div>
-    {section_html(sections["물동량·수요 분석"], "volume-box")}
+    <div class="section-label">📦 물동량·수요 분석</div>
+    <div class="volume-box">{volume}</div>
 
-    <div class="section-title">📈 시장 영향</div>
-    {section_html(sections["시장 영향"], "summary-box")}
+    <div class="section-label">📈 시장 영향</div>
+    <div class="summary-box">{market}</div>
 
-    <div class="section-title">🔭 향후 전망</div>
-    {section_html(sections["향후 전망"], "outlook-box")}
+    <div class="section-label">🔭 향후 전망</div>
+    <div class="outlook-box">{outlook}</div>
 </div>
 """, unsafe_allow_html=True)
-    else:
-        st.warning("⚠️ 컨테이너선 또는 박스선 관련 기사가 없습니다.")
 
     if not_relevant:
         with st.expander(f"❌ 비관련 기사 {len(not_relevant)}건"):
@@ -474,29 +445,27 @@ with st.sidebar:
         help="높을수록 더 깊은 분석. 시간이 더 걸릴 수 있습니다."
     )
     depth_label = {
-        3000:  "⚡ 빠른 분석",
-        5000:  "🔍 기본 분석",
-        8000:  "🧠 심층 분석 (권장)",
+        3000: "⚡ 빠른 분석",
+        5000: "🔍 기본 분석",
+        8000: "🧠 심층 분석 (권장)",
         10000: "🔬 정밀 분석",
         15000: "🚀 최대 분석",
     }
     st.caption(depth_label.get(thinking_budget, ""))
     st.divider()
-
     st.markdown("### ℹ️ 사용 방법")
     st.markdown("""
 **📋 클립보드 붙여넣기**
 1. `Win+Shift+S` 캡처
-2. 붙여넣기 탭 → `Ctrl+V`
-3. 분석 시작
+2. 붙여넣기 탭 클릭
+3. 화면 아무곳이나 클릭 후 `Ctrl+V`
+4. 분석 시작 버튼 클릭
 
 **📝 텍스트 직접 입력**
-1. 제목 복사
-2. 텍스트 탭 붙여넣기
-3. 분석 시작
+1. 제목 복사 붙여넣기
+2. 분석 시작 클릭
     """)
     st.divider()
-
     st.markdown("### 🔍 분석 항목")
     st.markdown("""
 - 📌 핵심 사실
@@ -519,69 +488,77 @@ if not api_key:
 
 client = get_client(api_key)
 
+# session_state 초기화
+if "clip_b64"  not in st.session_state: st.session_state["clip_b64"]  = ""
+if "clip_mime" not in st.session_state: st.session_state["clip_mime"] = ""
+
 tab_clip, tab_text = st.tabs(["📋 클립보드 붙여넣기 (Ctrl+V)", "📝 텍스트 직접 입력"])
 
 # ── 탭 1: 클립보드 ───────────────────────────────────────────
 with tab_clip:
     st.markdown("##### `Win+Shift+S` 캡처 후 아래 영역에서 `Ctrl+V`")
 
-    clip_result = components.html(CLIPBOARD_HTML, height=240, scrolling=False)
+    clip_result = components.html(CLIPBOARD_HTML, height=260, scrolling=False)
 
+    # 컴포넌트에서 값이 올 때마다 session_state 갱신
     if clip_result:
         try:
             data = json.loads(clip_result)
-            if data.get("base64"):
+            if data.get("ready") and data.get("base64"):
                 st.session_state["clip_b64"]  = data["base64"]
                 st.session_state["clip_mime"] = data.get("mime", "image/png")
-            else:
-                st.session_state.pop("clip_b64", None)
-                st.session_state.pop("clip_mime", None)
+            elif not data.get("ready"):
+                st.session_state["clip_b64"]  = ""
+                st.session_state["clip_mime"] = ""
         except Exception:
             pass
 
-# 이미지가 세션에 없어도 버튼 항상 표시
+    # 버튼 항상 표시 (이미지 없으면 비활성화)
+    has_image = bool(st.session_state.get("clip_b64"))
+
     _, col_btn, _ = st.columns([1, 1, 1])
     with col_btn:
-        btn_disabled = not bool(st.session_state.get("clip_b64"))
-        if st.button(
-            "🔍 이미지 분석 시작" if not btn_disabled else "📋 이미지를 먼저 붙여넣기 하세요",
+        clip_btn = st.button(
+            "🔍 이미지 분석 시작" if has_image else "📋 이미지를 먼저 붙여넣기 하세요",
             use_container_width=True,
             type="primary",
             key="btn_clip",
-            disabled=btn_disabled,
-        ):
-                with st.spinner("📸 이미지에서 기사 제목 추출 중..."):
-                    try:
-                        titles = extract_titles_from_image(
-                            client,
-                            st.session_state["clip_b64"],
-                            st.session_state["clip_mime"],
-                        )
-                    except Exception as e:
-                        st.error(f"❌ 제목 추출 오류: {e}")
-                        st.stop()
+            disabled=not has_image,
+        )
 
-                if not titles:
-                    st.warning("⚠️ 이미지에서 기사 제목을 찾지 못했습니다.")
-                    st.stop()
-
-                st.markdown("**📋 추출된 기사 제목:**")
-                st.markdown(
-                    '<div class="extracted-box">' +
-                    "<br>".join(f"{i+1}. {t}" for i, t in enumerate(titles)) +
-                    "</div>",
-                    unsafe_allow_html=True,
+    if clip_btn and has_image:
+        with st.spinner("📸 이미지에서 기사 제목 추출 중..."):
+            try:
+                titles = extract_titles_from_image(
+                    client,
+                    st.session_state["clip_b64"],
+                    st.session_state["clip_mime"],
                 )
-                st.success(f"✅ {len(titles)}개 제목 추출 → 심층 분석을 시작합니다. (Thinking: {thinking_budget:,} tokens)")
+            except Exception as e:
+                st.error(f"❌ 제목 추출 오류: {e}")
+                st.stop()
 
-                with st.spinner(f"🧠 Claude가 심층 분석 중입니다... (최대 1~2분 소요)"):
-                    try:
-                        results = analyze(client, titles, thinking_budget)
-                    except Exception as e:
-                        st.error(f"❌ 분석 오류: {e}")
-                        st.stop()
+        if not titles:
+            st.warning("⚠️ 이미지에서 기사 제목을 찾지 못했습니다.")
+            st.stop()
 
-                show_results(results, titles, thinking_budget)
+        st.markdown("**📋 추출된 기사 제목:**")
+        st.markdown(
+            '<div class="extracted-box">' +
+            "<br>".join(f"{i+1}. {t}" for i, t in enumerate(titles)) +
+            "</div>",
+            unsafe_allow_html=True,
+        )
+        st.success(f"✅ {len(titles)}개 제목 추출 완료 → 심층 분석 시작 (Thinking: {thinking_budget:,} tokens)")
+
+        with st.spinner("🧠 Claude가 심층 분석 중입니다... (1~2분 소요)"):
+            try:
+                results = analyze(client, titles, thinking_budget)
+            except Exception as e:
+                st.error(f"❌ 분석 오류: {e}")
+                st.stop()
+
+        show_results(results, titles, thinking_budget)
 
 # ── 탭 2: 텍스트 입력 ────────────────────────────────────────
 with tab_text:
@@ -613,7 +590,7 @@ with tab_text:
         titles = titles[:30]
         st.info(f"📋 총 **{len(titles)}개** 제목 · Thinking {thinking_budget:,} tokens 적용")
 
-        with st.spinner(f"🧠 Claude가 심층 분석 중입니다... (최대 1~2분 소요)"):
+        with st.spinner("🧠 Claude가 심층 분석 중입니다... (1~2분 소요)"):
             try:
                 results = analyze(client, titles, thinking_budget)
             except anthropic.APIStatusError as e:
